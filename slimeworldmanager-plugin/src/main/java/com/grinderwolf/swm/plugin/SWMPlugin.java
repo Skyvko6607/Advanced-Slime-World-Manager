@@ -17,6 +17,7 @@ import com.grinderwolf.swm.plugin.commands.CommandManager;
 import com.grinderwolf.swm.plugin.config.ConfigManager;
 import com.grinderwolf.swm.plugin.config.WorldData;
 import com.grinderwolf.swm.plugin.config.WorldsConfig;
+import com.grinderwolf.swm.plugin.fixer.WorldFixer;
 import com.grinderwolf.swm.plugin.loaders.LoaderUtils;
 import com.grinderwolf.swm.plugin.loaders.slime.SlimeWorldReaderRegistry;
 import com.grinderwolf.swm.plugin.log.Logging;
@@ -32,10 +33,12 @@ import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
 import org.bukkit.World;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -268,18 +271,35 @@ public class SWMPlugin extends JavaPlugin implements SlimePlugin, Listener {
         SlimeLoadedWorld world;
 
         try {
+            Logging.info("Reading world " + worldName + ".");
             world = SlimeWorldReaderRegistry.readWorld(loader, worldName, serializedWorld, propertyMap, readOnly);
 
+            Logging.info("World read " + worldName + ". Checking version.");
             if (world.getVersion() > nms.getWorldVersion()) {
+                Logging.info("Newer format detected, throwing exception.");
                 throw new NewerFormatException(world.getVersion());
             } else if (world.getVersion() < nms.getWorldVersion()) {
+                Logging.info("Upgrading world...");
                 WorldUpgrader.upgradeWorld(world);
+                Logging.info("World upgraded.");
             }
+
+            Logging.info("Fixing world...");
+            WorldFixer.fixWorld(world);
+            Logging.info("World fixed.");
         } catch (Exception ex) {
+            Logging.info("World locked!");
             if (!readOnly) { // Unlock the world as we're not using it
                 loader.unlockWorld(worldName);
             }
-
+            ex.printStackTrace();
+            if (this.isEnabled())
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        ex.printStackTrace();
+                    }
+                }.runTask(this);
             throw ex;
         }
 
